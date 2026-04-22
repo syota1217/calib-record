@@ -1,0 +1,1357 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>ループ校正記録</title>
+
+<!-- ===== PWA メタデータ ===== -->
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#c44810">
+<meta name="description" content="センサー・計装ループの校正誤差を計算する記録ツール">
+
+<!-- iOS Safari 用 (ホーム画面追加時にアプリ風に) -->
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="校正記録">
+<link rel="apple-touch-icon" href="icon-192.png">
+<link rel="apple-touch-icon" sizes="512x512" href="icon-512.png">
+
+<!-- favicon -->
+<link rel="icon" type="image/png" sizes="192x192" href="icon-192.png">
+<link rel="icon" type="image/png" sizes="512x512" href="icon-512.png">
+
+<style>
+  :root {
+    --bg-base:       #f5f3ee;
+    --bg-panel:      #ffffff;
+    --bg-panel-2:    #eeeae0;
+    --bg-readonly:   #f5f2ea;
+    --line:          #d4cfc2;
+    --line-bright:   #b8b2a3;
+    --ink:           #1a1a1a;
+    --ink-dim:       #525252;
+    --ink-muted:     #8a8578;
+    --accent:        #c44810;
+    --accent-soft:   #e86b2a;
+    --ok:            #2d7a4e;
+    --warn:          #c69210;
+    --bad:           #c4321f;
+
+    --mono: "SF Mono", "Menlo", "Consolas", "Cascadia Mono", "Courier New", "MS Gothic", monospace;
+    --serif: "Hiragino Mincho ProN", "Yu Mincho", "YuMincho", "游明朝", "MS PMincho", "Noto Serif CJK JP", serif;
+    --sans: "Hiragino Kaku Gothic ProN", "Hiragino Sans", "Yu Gothic", "YuGothic", "游ゴシック", "Meiryo", "メイリオ", "MS PGothic", "Noto Sans CJK JP", sans-serif;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  html, body {
+    background: var(--bg-base);
+    color: var(--ink);
+    font-family: var(--sans);
+    font-weight: 400;
+    min-height: 100vh;
+    -webkit-font-smoothing: antialiased;
+    font-feature-settings: "palt";
+  }
+
+  body {
+    background-image:
+      radial-gradient(ellipse 1200px 600px at 15% -10%, rgba(196,72,16,0.04), transparent 60%),
+      radial-gradient(ellipse 800px 400px at 110% 110%, rgba(45,122,78,0.03), transparent 60%);
+    background-attachment: fixed;
+    /* セーフエリア対応(iPhone X以降) */
+    padding-top: env(safe-area-inset-top);
+    padding-bottom: env(safe-area-inset-bottom);
+    padding-left: env(safe-area-inset-left);
+    padding-right: env(safe-area-inset-right);
+  }
+
+  body::before {
+    content: "";
+    position: fixed;
+    inset: 0;
+    background-image:
+      linear-gradient(rgba(0,0,0,0.025) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(0,0,0,0.025) 1px, transparent 1px);
+    background-size: 40px 40px;
+    pointer-events: none;
+    z-index: 0;
+  }
+
+  .frame {
+    position: relative;
+    z-index: 1;
+    max-width: 1400px;
+    margin: 0 auto;
+    padding: 28px 36px 60px;
+  }
+
+  header {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    align-items: end;
+    padding-bottom: 18px;
+    border-bottom: 1px solid var(--line);
+    margin-bottom: 28px;
+    gap: 24px;
+  }
+
+  .brand-mark {
+    font-family: var(--mono);
+    font-size: 10px;
+    letter-spacing: 0.3em;
+    color: var(--ink-muted);
+    margin-bottom: 10px;
+    text-transform: uppercase;
+    font-weight: 500;
+  }
+
+  .brand-mark span.dot {
+    display: inline-block;
+    width: 6px;
+    height: 6px;
+    background: var(--accent);
+    border-radius: 50%;
+    margin-right: 10px;
+    vertical-align: middle;
+    box-shadow: 0 0 10px rgba(196,72,16,0.5);
+    animation: pulse 2s ease-in-out infinite;
+  }
+
+  @keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.3; }
+  }
+
+  h1 {
+    font-family: var(--serif);
+    font-weight: 800;
+    font-size: clamp(24px, 3.6vw, 40px);
+    line-height: 1.1;
+    letter-spacing: -0.01em;
+    color: var(--ink);
+  }
+
+  h1 .sub {
+    display: block;
+    font-family: var(--mono);
+    font-weight: 500;
+    font-size: 11px;
+    letter-spacing: 0.2em;
+    color: var(--accent);
+    margin-top: 10px;
+    text-transform: uppercase;
+  }
+
+  .meta-block {
+    font-family: var(--mono);
+    font-size: 10px;
+    color: var(--ink-muted);
+    text-align: right;
+    line-height: 1.9;
+  }
+
+  .meta-block .k { color: var(--ink-dim); letter-spacing: 0.1em; font-weight: 500; }
+  .meta-block .v { color: var(--ink); letter-spacing: 0.05em; }
+
+  .panel {
+    background: var(--bg-panel);
+    border: 1px solid var(--line);
+    position: relative;
+    margin-bottom: 24px;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.04);
+  }
+
+  .panel::before {
+    content: "";
+    position: absolute;
+    top: -1px; left: -1px;
+    width: 14px; height: 14px;
+    border-top: 2px solid var(--accent);
+    border-left: 2px solid var(--accent);
+  }
+  .panel::after {
+    content: "";
+    position: absolute;
+    bottom: -1px; right: -1px;
+    width: 14px; height: 14px;
+    border-bottom: 2px solid var(--accent);
+    border-right: 2px solid var(--accent);
+  }
+
+  .panel-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 12px 18px;
+    border-bottom: 1px solid var(--line);
+    background: var(--bg-panel-2);
+  }
+
+  .panel-head h2 {
+    font-family: var(--mono);
+    font-weight: 600;
+    font-size: 11px;
+    letter-spacing: 0.25em;
+    text-transform: uppercase;
+    color: var(--ink);
+  }
+
+  .panel-head .idx {
+    font-family: var(--mono);
+    font-size: 10px;
+    color: var(--ink-muted);
+    letter-spacing: 0.15em;
+  }
+
+  .panel-body { padding: 20px 22px; }
+
+  .range-row {
+    display: grid;
+    grid-template-columns: 110px 1fr 24px 1fr 130px;
+    gap: 10px;
+    align-items: center;
+    margin-bottom: 14px;
+  }
+
+  .range-row .label {
+    font-family: var(--mono);
+    font-size: 11px;
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+    color: var(--ink-dim);
+    font-weight: 500;
+  }
+
+  .range-row .tilde {
+    text-align: center;
+    font-family: var(--mono);
+    color: var(--ink-muted);
+    font-size: 14px;
+  }
+
+  .input-wrap {
+    position: relative;
+    display: flex;
+    align-items: stretch;
+    border: 1px solid var(--line-bright);
+    background: #fff;
+    transition: border-color 0.15s ease, box-shadow 0.15s ease;
+  }
+
+  .input-wrap:focus-within {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 2px rgba(196,72,16,0.15);
+  }
+
+  input[type="text"], input[type="number"], select {
+    flex: 1;
+    background: transparent;
+    border: none;
+    outline: none;
+    color: var(--ink);
+    font-family: var(--mono);
+    font-size: 16px;
+    padding: 10px 11px;
+    width: 100%;
+    letter-spacing: 0.02em;
+    min-width: 0;
+  }
+
+  select {
+    cursor: pointer;
+    appearance: none;
+    font-family: var(--sans);
+    background-image:
+      linear-gradient(45deg, transparent 50%, var(--ink-dim) 50%),
+      linear-gradient(135deg, var(--ink-dim) 50%, transparent 50%);
+    background-position: calc(100% - 18px) 50%, calc(100% - 13px) 50%;
+    background-size: 5px 5px, 5px 5px;
+    background-repeat: no-repeat;
+    padding-right: 30px;
+  }
+
+  .unit-select { width: 130px; }
+  .unit-select select { text-align: center; text-align-last: center; }
+
+  .preset-row {
+    display: flex;
+    gap: 6px;
+    flex-wrap: wrap;
+    margin-top: 12px;
+    padding-top: 12px;
+    border-top: 1px dashed var(--line);
+  }
+  .preset {
+    font-family: var(--mono);
+    font-size: 11px;
+    letter-spacing: 0.1em;
+    padding: 9px 13px;
+    background: #fff;
+    border: 1px solid var(--line-bright);
+    color: var(--ink-dim);
+    cursor: pointer;
+    transition: all 0.15s ease;
+  }
+  .preset:hover, .preset:active { border-color: var(--accent); color: var(--accent); background: #fff8f3; }
+
+  .tol-row {
+    display: grid;
+    grid-template-columns: 260px 1fr;
+    gap: 14px;
+    margin-top: 14px;
+    padding-top: 14px;
+    border-top: 1px dashed var(--line);
+  }
+
+  .tol-row .field label {
+    display: block;
+    font-family: var(--mono);
+    font-size: 10px;
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+    color: var(--ink-dim);
+    margin-bottom: 6px;
+    font-weight: 500;
+  }
+
+  .unit-suffix {
+    padding: 0 14px;
+    display: flex;
+    align-items: center;
+    background: var(--bg-panel-2);
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--ink-muted);
+    border-left: 1px solid var(--line);
+    white-space: nowrap;
+  }
+
+  /* ===== デスクトップ: 表形式 ===== */
+  .table-scroll { overflow-x: auto; }
+
+  .pt-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 12px;
+    min-width: 780px;
+  }
+
+  .pt-table th {
+    font-family: var(--mono);
+    font-size: 9px;
+    letter-spacing: 0.15em;
+    text-transform: uppercase;
+    color: var(--ink-dim);
+    text-align: center;
+    padding: 11px 6px;
+    border: 1px solid var(--line);
+    font-weight: 600;
+    background: var(--bg-panel-2);
+    white-space: nowrap;
+  }
+
+  .pt-table td {
+    padding: 4px;
+    border: 1px solid var(--line);
+    background: #fff;
+  }
+
+  .pt-table td.idx {
+    text-align: center;
+    color: var(--ink-muted);
+    font-family: var(--mono);
+    font-size: 10px;
+    width: 32px;
+    background: var(--bg-panel-2);
+  }
+
+  .pt-table td.result {
+    font-family: var(--mono);
+    text-align: right;
+    padding: 8px 10px;
+    color: var(--ink-dim);
+    font-weight: 500;
+    font-size: 13px;
+  }
+
+  .pt-table td .tbl-input {
+    width: 100%;
+    background: #fff;
+    border: 1px solid transparent;
+    color: var(--ink);
+    font-family: var(--mono);
+    font-size: 13px;
+    padding: 8px 9px;
+    outline: none;
+    text-align: right;
+    transition: border-color 0.15s ease, background 0.15s ease;
+  }
+  .pt-table td .tbl-input:focus { border-color: var(--accent); background: #fffaf5; }
+  .pt-table td .tbl-input.readonly {
+    background: var(--bg-readonly);
+    color: var(--ink-dim);
+    cursor: not-allowed;
+  }
+
+  .pt-table td.result .val-pos { color: var(--accent); }
+  .pt-table td.result .val-neg { color: #1e5a94; }
+  .pt-table td.result .val-zero { color: var(--ink-muted); }
+
+  .pt-table td.judge-cell {
+    text-align: center;
+    width: 56px;
+    font-family: var(--serif);
+    font-size: 15px;
+    font-weight: 700;
+  }
+  .pt-table td.judge-cell.pass { color: var(--ok); background: #eaf5ee; }
+  .pt-table td.judge-cell.fail { color: var(--bad); background: #fbecea; }
+  .pt-table td.judge-cell.none { color: var(--ink-muted); }
+
+  .pt-table td.del-cell {
+    width: 38px;
+    text-align: center;
+    padding: 4px;
+    background: var(--bg-panel-2);
+  }
+
+  .pt-table td .del-btn {
+    background: #fff;
+    border: 1px solid var(--line);
+    color: var(--ink-muted);
+    font-family: var(--mono);
+    font-size: 12px;
+    width: 28px;
+    height: 28px;
+    cursor: pointer;
+    transition: all 0.15s ease;
+  }
+  .pt-table td .del-btn:hover, .pt-table td .del-btn:active {
+    border-color: var(--bad); color: var(--bad); background: #fdf3f1;
+  }
+
+  /* ===== モバイル: カード表示 ===== */
+  .mobile-cards { display: none; }
+
+  @media (max-width: 768px) {
+    .frame { padding: 20px 14px 60px; }
+    header { grid-template-columns: 1fr; }
+    .meta-block { text-align: left; font-size: 9px; }
+    .panel-body { padding: 16px 14px; }
+
+    .range-row {
+      grid-template-columns: 1fr 1fr;
+      row-gap: 8px;
+      column-gap: 8px;
+    }
+    .range-row .label {
+      grid-column: 1 / -1;
+      margin-bottom: 2px;
+    }
+    .range-row .tilde { display: none; }
+    .range-row .unit-select {
+      grid-column: 1 / -1;
+      width: 100%;
+    }
+
+    .tol-row { grid-template-columns: 1fr; }
+
+    .table-scroll { display: none; }
+    .mobile-cards { display: block; }
+
+    .preset { font-size: 11px; padding: 10px 12px; }
+    .btn { font-size: 11px; padding: 12px 14px; }
+  }
+
+  .card {
+    background: #fff;
+    border: 1px solid var(--line);
+    margin-bottom: 14px;
+    box-shadow: 0 1px 2px rgba(0,0,0,0.04);
+  }
+
+  .card-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 10px 14px;
+    background: var(--bg-panel-2);
+    border-bottom: 1px solid var(--line);
+  }
+  .card-head .card-title {
+    font-family: var(--mono);
+    font-size: 11px;
+    letter-spacing: 0.15em;
+    color: var(--ink-dim);
+    font-weight: 600;
+  }
+  .card-head .card-title .num {
+    display: inline-block;
+    background: var(--accent);
+    color: #fff;
+    padding: 2px 8px;
+    margin-right: 8px;
+    font-weight: 700;
+  }
+  .card-head .card-del {
+    background: #fff;
+    border: 1px solid var(--line);
+    color: var(--ink-muted);
+    font-family: var(--mono);
+    font-size: 14px;
+    width: 32px;
+    height: 32px;
+    cursor: pointer;
+  }
+  .card-head .card-del:active { border-color: var(--bad); color: var(--bad); }
+
+  .card-body { padding: 14px; }
+
+  .card-field {
+    display: grid;
+    grid-template-columns: 110px 1fr;
+    gap: 10px;
+    align-items: center;
+    padding: 8px 0;
+    border-bottom: 1px dashed var(--line);
+  }
+  .card-field:last-child { border-bottom: none; }
+
+  .card-field > label {
+    font-family: var(--mono);
+    font-size: 10px;
+    letter-spacing: 0.1em;
+    color: var(--ink-dim);
+    text-transform: uppercase;
+    font-weight: 500;
+  }
+
+  .card-field .m-input {
+    width: 100%;
+    background: #fff;
+    border: 1px solid var(--line-bright);
+    color: var(--ink);
+    font-family: var(--mono);
+    font-size: 16px;
+    padding: 10px 11px;
+    outline: none;
+    text-align: right;
+    transition: border-color 0.15s ease, background 0.15s ease;
+  }
+  .card-field .m-input:focus {
+    border-color: var(--accent);
+    background: #fffaf5;
+    box-shadow: 0 0 0 2px rgba(196,72,16,0.15);
+  }
+  .card-field .m-input.readonly {
+    background: var(--bg-readonly);
+    color: var(--ink-dim);
+  }
+
+  .card-field .m-result {
+    font-family: var(--mono);
+    font-size: 16px;
+    text-align: right;
+    font-weight: 600;
+    padding: 10px 0;
+    color: var(--ink-dim);
+  }
+  .card-field .m-result .val-pos { color: var(--accent); }
+  .card-field .m-result .val-neg { color: #1e5a94; }
+  .card-field .m-result .val-zero { color: var(--ink-muted); }
+
+  .card-field .m-judge {
+    font-family: var(--serif);
+    font-size: 22px;
+    font-weight: 800;
+    text-align: right;
+    padding: 6px 0;
+  }
+  .card-field .m-judge.pass { color: var(--ok); }
+  .card-field .m-judge.fail { color: var(--bad); }
+  .card-field .m-judge.none { color: var(--ink-muted); }
+
+  .btn-row {
+    display: flex;
+    gap: 8px;
+    margin-top: 18px;
+    flex-wrap: wrap;
+  }
+
+  .btn {
+    padding: 10px 16px;
+    background: #fff;
+    border: 1px solid var(--line-bright);
+    color: var(--ink-dim);
+    font-family: var(--mono);
+    font-size: 11px;
+    letter-spacing: 0.15em;
+    text-transform: uppercase;
+    cursor: pointer;
+    transition: all 0.15s ease;
+    font-weight: 500;
+  }
+
+  .btn:hover, .btn:active {
+    border-color: var(--ink-dim);
+    color: var(--ink);
+    background: var(--bg-panel-2);
+  }
+
+  .btn.primary {
+    background: var(--accent);
+    border-color: var(--accent);
+    color: #fff;
+    font-weight: 700;
+  }
+  .btn.primary:hover, .btn.primary:active {
+    background: var(--accent-soft);
+    border-color: var(--accent-soft);
+    color: #fff;
+  }
+
+  .judge-banner {
+    padding: 18px 22px;
+    border-top: 1px solid var(--line);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    background: var(--bg-panel-2);
+    font-family: var(--mono);
+    letter-spacing: 0.15em;
+    gap: 14px;
+    flex-wrap: wrap;
+  }
+  .judge-banner .j-label {
+    color: var(--ink-muted);
+    text-transform: uppercase;
+    font-size: 11px;
+    font-weight: 500;
+  }
+  .judge-banner .j-value {
+    font-family: var(--serif);
+    font-weight: 800;
+    font-size: 32px;
+    letter-spacing: 0.2em;
+    margin-top: 4px;
+  }
+  .judge-banner .j-detail {
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--ink-dim);
+    letter-spacing: 0.1em;
+  }
+  .judge-banner.pass { background: #eaf5ee; border-top-color: var(--ok); }
+  .judge-banner.pass .j-value { color: var(--ok); }
+  .judge-banner.fail { background: #fbecea; border-top-color: var(--bad); }
+  .judge-banner.fail .j-value { color: var(--bad); }
+  .judge-banner.none .j-value { color: var(--ink-muted); }
+
+  footer {
+    margin-top: 24px;
+    padding-top: 18px;
+    border-top: 1px solid var(--line);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-family: var(--mono);
+    font-size: 10px;
+    color: var(--ink-muted);
+    letter-spacing: 0.15em;
+    text-transform: uppercase;
+    gap: 16px;
+    flex-wrap: wrap;
+  }
+
+  footer .formula {
+    font-family: var(--mono);
+    color: var(--ink-dim);
+    text-transform: none;
+    letter-spacing: 0;
+    font-size: 10px;
+  }
+
+  /* PWAインストール案内バナー */
+  .install-banner {
+    display: none;
+    position: fixed;
+    bottom: calc(16px + env(safe-area-inset-bottom));
+    left: 16px;
+    right: 16px;
+    background: var(--ink);
+    color: #fff;
+    padding: 14px 18px;
+    font-family: var(--sans);
+    font-size: 13px;
+    line-height: 1.5;
+    box-shadow: 0 4px 20px rgba(0,0,0,0.25);
+    z-index: 100;
+    max-width: 480px;
+    margin: 0 auto;
+    border-left: 3px solid var(--accent);
+  }
+  .install-banner.show { display: block; }
+  .install-banner .ib-title {
+    font-family: var(--mono);
+    font-size: 10px;
+    letter-spacing: 0.2em;
+    color: var(--accent-soft);
+    text-transform: uppercase;
+    margin-bottom: 6px;
+  }
+  .install-banner .ib-actions {
+    display: flex;
+    gap: 8px;
+    margin-top: 10px;
+  }
+  .install-banner button {
+    padding: 7px 14px;
+    background: transparent;
+    border: 1px solid #666;
+    color: #fff;
+    font-family: var(--mono);
+    font-size: 11px;
+    letter-spacing: 0.1em;
+    cursor: pointer;
+  }
+  .install-banner button.primary {
+    background: var(--accent);
+    border-color: var(--accent);
+    font-weight: 700;
+  }
+
+  @media print {
+    body { background: #fff; color: #000; }
+    body::before { display: none; }
+    .btn, .preset, .del-cell, .del-btn, .preset-row, .card-del, .install-banner { display: none !important; }
+    .panel { border-color: #000; background: #fff; box-shadow: none; }
+    .panel::before, .panel::after { display: none; }
+    .panel-head { background: #eee; }
+    .table-scroll { display: block !important; }
+    .mobile-cards { display: none !important; }
+    .pt-table td, .pt-table th { border-color: #000; background: #fff; color: #000; }
+    .pt-table td.judge-cell.pass, .pt-table td.judge-cell.fail { background: #fff; }
+    input, select { color: #000 !important; }
+  }
+</style>
+</head>
+<body>
+
+<div class="frame">
+
+  <header>
+    <div>
+      <div class="brand-mark"><span class="dot"></span>LOOP CALIBRATION · RECORD · PWA v1.0</div>
+      <h1>
+        ループ校正記録
+        <span class="sub">Loop Calibration Record</span>
+      </h1>
+    </div>
+    <div class="meta-block">
+      <div><span class="k">FORMULA</span> &nbsp;·&nbsp; <span class="v">Err = (測定値 − 基準出力) / 出力スパン × 100</span></div>
+      <div><span class="k">ROUNDING</span> &nbsp;·&nbsp; <span class="v">小数第2位 切り上げ</span></div>
+      <div><span class="k">DATE</span> &nbsp;·&nbsp; <span class="v" id="today"></span></div>
+    </div>
+  </header>
+
+  <section class="panel" aria-labelledby="setup-head">
+    <div class="panel-head">
+      <h2 id="setup-head">01 · レンジ設定 / RANGE CONFIG</h2>
+      <span class="idx">[ CONFIG ]</span>
+    </div>
+    <div class="panel-body">
+
+      <div class="range-row">
+        <span class="label">入力レンジ</span>
+        <div class="input-wrap"><input type="number" id="inMin" value="4" step="any" inputmode="decimal"></div>
+        <span class="tilde">〜</span>
+        <div class="input-wrap"><input type="number" id="inMax" value="20" step="any" inputmode="decimal"></div>
+        <div class="unit-select input-wrap">
+          <select id="inUnit">
+            <optgroup label="電流・電圧">
+              <option value="mA">mA</option>
+              <option value="A">A</option>
+              <option value="V">V</option>
+              <option value="mV">mV</option>
+            </optgroup>
+            <optgroup label="温度">
+              <option value="℃">℃</option>
+              <option value="℉">℉</option>
+              <option value="K">K</option>
+            </optgroup>
+            <optgroup label="圧力">
+              <option value="MPa">MPa</option>
+              <option value="kPa">kPa</option>
+              <option value="Pa">Pa</option>
+              <option value="bar">bar</option>
+              <option value="psi">psi</option>
+              <option value="mmH2O">mmH₂O</option>
+              <option value="mmHg">mmHg</option>
+            </optgroup>
+            <optgroup label="流量">
+              <option value="L/min">L/min</option>
+              <option value="L/h">L/h</option>
+              <option value="m3/h">m³/h</option>
+              <option value="kg/h">kg/h</option>
+              <option value="t/h">t/h</option>
+              <option value="Nm3/h">Nm³/h</option>
+            </optgroup>
+            <optgroup label="レベル・長さ">
+              <option value="mm">mm</option>
+              <option value="cm">cm</option>
+              <option value="m">m</option>
+            </optgroup>
+            <optgroup label="その他">
+              <option value="%">%</option>
+              <option value="Hz">Hz</option>
+              <option value="rpm">rpm</option>
+              <option value="count">カウント</option>
+              <option value="pulse">パルス</option>
+              <option value="pH">pH</option>
+              <option value="uS/cm">μS/cm</option>
+              <option value="ppm">ppm</option>
+            </optgroup>
+          </select>
+        </div>
+      </div>
+
+      <div class="range-row">
+        <span class="label">出力レンジ</span>
+        <div class="input-wrap"><input type="number" id="outMin" value="4" step="any" inputmode="decimal"></div>
+        <span class="tilde">〜</span>
+        <div class="input-wrap"><input type="number" id="outMax" value="20" step="any" inputmode="decimal"></div>
+        <div class="unit-select input-wrap">
+          <select id="outUnit">
+            <optgroup label="電流・電圧">
+              <option value="mA">mA</option>
+              <option value="A">A</option>
+              <option value="V">V</option>
+              <option value="mV">mV</option>
+            </optgroup>
+            <optgroup label="温度">
+              <option value="℃">℃</option>
+              <option value="℉">℉</option>
+              <option value="K">K</option>
+            </optgroup>
+            <optgroup label="圧力">
+              <option value="MPa">MPa</option>
+              <option value="kPa">kPa</option>
+              <option value="Pa">Pa</option>
+              <option value="bar">bar</option>
+              <option value="psi">psi</option>
+              <option value="mmH2O">mmH₂O</option>
+              <option value="mmHg">mmHg</option>
+            </optgroup>
+            <optgroup label="流量">
+              <option value="L/min">L/min</option>
+              <option value="L/h">L/h</option>
+              <option value="m3/h">m³/h</option>
+              <option value="kg/h">kg/h</option>
+              <option value="t/h">t/h</option>
+              <option value="Nm3/h">Nm³/h</option>
+            </optgroup>
+            <optgroup label="レベル・長さ">
+              <option value="mm">mm</option>
+              <option value="cm">cm</option>
+              <option value="m">m</option>
+            </optgroup>
+            <optgroup label="その他">
+              <option value="%">%</option>
+              <option value="Hz">Hz</option>
+              <option value="rpm">rpm</option>
+              <option value="count">カウント</option>
+              <option value="pulse">パルス</option>
+              <option value="pH">pH</option>
+              <option value="uS/cm">μS/cm</option>
+              <option value="ppm">ppm</option>
+            </optgroup>
+          </select>
+        </div>
+      </div>
+
+      <div class="preset-row">
+        <button class="preset" data-preset="in:0,100,℃|out:4,20,mA">温度 0-100℃ → 4-20mA</button>
+        <button class="preset" data-preset="in:0,10,MPa|out:4,20,mA">圧力 0-10MPa → 4-20mA</button>
+        <button class="preset" data-preset="in:0,100,%|out:4,20,mA">レベル 0-100% → 4-20mA</button>
+        <button class="preset" data-preset="in:4,20,mA|out:4,20,mA">電流 4-20mA → 4-20mA</button>
+        <button class="preset" data-preset="in:4,20,mA|out:1,5,V">電流 4-20mA → 電圧 1-5V</button>
+        <button class="preset" data-preset="in:0,10000,count|out:4,20,mA">カウント 0-10000 → 4-20mA</button>
+      </div>
+
+      <div class="tol-row">
+        <div class="field">
+          <label>許容誤差 (TOLERANCE)</label>
+          <div class="input-wrap">
+            <input type="number" id="tolerance" value="0.10" step="0.01" inputmode="decimal">
+            <span class="unit-suffix">% FS</span>
+          </div>
+        </div>
+        <div class="field">
+          <label>備考 / NOTE</label>
+          <div class="input-wrap"><input type="text" id="note" placeholder="任意"></div>
+        </div>
+      </div>
+
+    </div>
+  </section>
+
+  <section class="panel" aria-labelledby="tbl-head">
+    <div class="panel-head">
+      <h2 id="tbl-head">02 · 校正データ / DATA</h2>
+      <span class="idx">[ ENTRY ]</span>
+    </div>
+    <div class="panel-body">
+
+      <div class="table-scroll">
+        <table class="pt-table" id="ptTable">
+          <thead>
+            <tr>
+              <th>#</th>
+              <th>入力 (%)</th>
+              <th>基準入力 <span id="thInUnit" style="color:var(--ink-muted)">[mA]</span></th>
+              <th>基準出力 <span id="thOutUnit" style="color:var(--ink-muted)">[mA]</span></th>
+              <th>測定値 <span id="thOutUnit2" style="color:var(--ink-muted)">[mA]</span></th>
+              <th>調整値 <span id="thOutUnit3" style="color:var(--ink-muted)">[mA]</span></th>
+              <th>誤差 (%)</th>
+              <th>判定</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody id="ptBody"></tbody>
+        </table>
+      </div>
+
+      <div class="mobile-cards" id="mobileCards"></div>
+
+      <div class="btn-row">
+        <button class="btn primary" id="btnCalc">▶ 計算</button>
+        <button class="btn" id="btnStd3">3点</button>
+        <button class="btn" id="btnStd5">5点</button>
+        <button class="btn" id="btnStd11">11点</button>
+        <button class="btn" id="btnAddRow">+ 追加</button>
+        <button class="btn" id="btnClear">測定値クリア</button>
+        <button class="btn" id="btnReset">RESET</button>
+        <button class="btn" id="btnPrint">🖨 印刷</button>
+      </div>
+
+    </div>
+
+    <div class="judge-banner none" id="judgeBanner">
+      <div>
+        <div class="j-label">総合判定 / JUDGMENT</div>
+        <div class="j-value" id="judgeValue">—</div>
+      </div>
+      <div class="j-detail" id="judgeDetail">測定値を入力してください</div>
+    </div>
+  </section>
+
+  <footer>
+    <div>&copy; LOOP CALIBRATION RECORD / PWA · OFFLINE READY</div>
+    <div class="formula">誤差(%) = (測定値 − 基準出力) ÷ 出力スパン × 100 · 小数第2位切り上げ</div>
+  </footer>
+
+</div>
+
+<!-- PWAインストール案内 -->
+<div class="install-banner" id="installBanner">
+  <div class="ib-title">APP INSTALL · アプリとしてインストール</div>
+  <div>ホーム画面に追加すると、アプリのように起動できます。</div>
+  <div class="ib-actions">
+    <button class="primary" id="ibInstall">インストール</button>
+    <button id="ibDismiss">後で</button>
+  </div>
+</div>
+
+<script>
+  const $ = (s, ctx=document) => ctx.querySelector(s);
+  const $$ = (s, ctx=document) => Array.from(ctx.querySelectorAll(s));
+
+  (function(){
+    const d = new Date();
+    const pad = n => String(n).padStart(2,'0');
+    $('#today').textContent = `${d.getFullYear()}.${pad(d.getMonth()+1)}.${pad(d.getDate())}`;
+  })();
+
+  const UNIT_DISPLAY = {
+    'mmH2O': 'mmH₂O',
+    'm3/h': 'm³/h',
+    'Nm3/h': 'Nm³/h',
+    'uS/cm': 'μS/cm',
+    'count': 'カウント',
+    'pulse': 'パルス'
+  };
+  function unitLabel(code){ return UNIT_DISPLAY[code] || code; }
+
+  let state = { points: [] };
+
+  function ceilAbs2(n){
+    if(!isFinite(n)) return NaN;
+    const sign = n < 0 ? -1 : 1;
+    const abs = Math.abs(n);
+    const rounded = Math.ceil(abs * 100 - 1e-9) / 100;
+    return sign * rounded;
+  }
+
+  function fmtErrStr(raw){
+    if(!isFinite(raw)) return '—';
+    const rounded = ceilAbs2(raw);
+    const s = rounded > 0 ? '+' : (rounded < 0 ? '' : ' ');
+    return s + rounded.toFixed(2);
+  }
+
+  function syncUnitLabels(){
+    const iu = unitLabel($('#inUnit').value || '-');
+    const ou = unitLabel($('#outUnit').value || '-');
+    $('#thInUnit').textContent = `[${iu}]`;
+    $('#thOutUnit').textContent = `[${ou}]`;
+    $('#thOutUnit2').textContent = `[${ou}]`;
+    $('#thOutUnit3').textContent = `[${ou}]`;
+    $$('#mobileCards .m-unit-in').forEach(el => el.textContent = iu);
+    $$('#mobileCards .m-unit-out').forEach(el => el.textContent = ou);
+  }
+
+  function getRangeValues(){
+    return {
+      inMin: parseFloat($('#inMin').value),
+      inMax: parseFloat($('#inMax').value),
+      outMin: parseFloat($('#outMin').value),
+      outMax: parseFloat($('#outMax').value),
+    };
+  }
+
+  function computePoint(p){
+    const {inMin, inMax, outMin, outMax} = getRangeValues();
+    const inSpan = inMax - inMin;
+    const outSpan = outMax - outMin;
+    const pct = parseFloat(p.pct);
+    const meas = parseFloat(p.meas);
+    const tol = parseFloat($('#tolerance').value);
+
+    let refIn = null, refOut = null, delta = null, errRaw = null, errRounded = null, judge = 'none';
+
+    if(isFinite(pct) && isFinite(inMin) && isFinite(inMax)){
+      refIn = inMin + inSpan * pct / 100;
+    }
+    if(isFinite(pct) && isFinite(outMin) && isFinite(outMax)){
+      refOut = outMin + outSpan * pct / 100;
+    }
+    if(isFinite(refOut) && isFinite(meas) && isFinite(outSpan) && outSpan !== 0){
+      delta = meas - refOut;
+      errRaw = (delta / outSpan) * 100;
+      errRounded = ceilAbs2(errRaw);
+      if(isFinite(tol) && tol > 0){
+        judge = Math.abs(errRounded) <= tol ? 'pass' : 'fail';
+      }
+    }
+    return { refIn, refOut, delta, errRaw, errRounded, judge };
+  }
+
+  function renderTable(){
+    const body = $('#ptBody');
+    body.innerHTML = '';
+    state.points.forEach((p, i) => {
+      const c = computePoint(p);
+      const tr = document.createElement('tr');
+      const errCls = c.errRounded > 0 ? 'val-pos' : (c.errRounded < 0 ? 'val-neg' : 'val-zero');
+      tr.innerHTML = `
+        <td class="idx">${i + 1}</td>
+        <td><input type="number" class="tbl-input" data-field="pct" data-i="${i}" step="any" inputmode="decimal" value="${p.pct ?? ''}"></td>
+        <td><input type="number" class="tbl-input readonly" readonly value="${isFinite(c.refIn) ? Number(c.refIn.toFixed(6)) : ''}"></td>
+        <td><input type="number" class="tbl-input readonly" readonly value="${isFinite(c.refOut) ? Number(c.refOut.toFixed(6)) : ''}"></td>
+        <td><input type="number" class="tbl-input" data-field="meas" data-i="${i}" step="any" inputmode="decimal" placeholder="測定値" value="${p.meas ?? ''}"></td>
+        <td><input type="number" class="tbl-input" data-field="adj" data-i="${i}" step="any" inputmode="decimal" placeholder="調整値" value="${p.adj ?? ''}"></td>
+        <td class="result"><span class="${errCls}">${fmtErrStr(c.errRaw)}</span></td>
+        <td class="judge-cell ${c.judge}">${c.judge === 'pass' ? '良' : (c.judge === 'fail' ? '否' : '—')}</td>
+        <td class="del-cell"><button class="del-btn" data-del="${i}" title="削除">×</button></td>
+      `;
+      body.appendChild(tr);
+    });
+
+    body.querySelectorAll('input[data-field]').forEach(inp => {
+      inp.addEventListener('input', e => {
+        const i = parseInt(e.target.dataset.i);
+        const f = e.target.dataset.field;
+        state.points[i][f] = e.target.value;
+        saveState();
+        renderAll();
+      });
+    });
+    body.querySelectorAll('[data-del]').forEach(btn => {
+      btn.addEventListener('click', e => {
+        const i = parseInt(e.target.dataset.del);
+        state.points.splice(i, 1);
+        saveState();
+        renderAll();
+      });
+    });
+  }
+
+  function renderCards(){
+    const unitIn = unitLabel($('#inUnit').value || '-');
+    const unitOut = unitLabel($('#outUnit').value || '-');
+    const wrap = $('#mobileCards');
+    wrap.innerHTML = '';
+    state.points.forEach((p, i) => {
+      const c = computePoint(p);
+      const errCls = c.errRounded > 0 ? 'val-pos' : (c.errRounded < 0 ? 'val-neg' : 'val-zero');
+      const card = document.createElement('div');
+      card.className = 'card';
+      card.innerHTML = `
+        <div class="card-head">
+          <div class="card-title"><span class="num">${i + 1}</span>校正点 ${p.pct ?? '—'}%</div>
+          <button class="card-del" data-del="${i}" aria-label="削除">×</button>
+        </div>
+        <div class="card-body">
+          <div class="card-field">
+            <label>入力 (%)</label>
+            <input type="number" class="m-input" data-field="pct" data-i="${i}" step="any" inputmode="decimal" value="${p.pct ?? ''}">
+          </div>
+          <div class="card-field">
+            <label>基準入力 <span class="m-unit-in">${unitIn}</span></label>
+            <input type="number" class="m-input readonly" readonly value="${isFinite(c.refIn) ? Number(c.refIn.toFixed(6)) : ''}">
+          </div>
+          <div class="card-field">
+            <label>基準出力 <span class="m-unit-out">${unitOut}</span></label>
+            <input type="number" class="m-input readonly" readonly value="${isFinite(c.refOut) ? Number(c.refOut.toFixed(6)) : ''}">
+          </div>
+          <div class="card-field">
+            <label>測定値 <span class="m-unit-out">${unitOut}</span></label>
+            <input type="number" class="m-input" data-field="meas" data-i="${i}" step="any" inputmode="decimal" placeholder="入力してください" value="${p.meas ?? ''}">
+          </div>
+          <div class="card-field">
+            <label>調整値 <span class="m-unit-out">${unitOut}</span></label>
+            <input type="number" class="m-input" data-field="adj" data-i="${i}" step="any" inputmode="decimal" placeholder="任意" value="${p.adj ?? ''}">
+          </div>
+          <div class="card-field">
+            <label>誤差 (%)</label>
+            <div class="m-result"><span class="${errCls}">${fmtErrStr(c.errRaw)}</span></div>
+          </div>
+          <div class="card-field">
+            <label>判定</label>
+            <div class="m-judge ${c.judge}">${c.judge === 'pass' ? '良' : (c.judge === 'fail' ? '否' : '—')}</div>
+          </div>
+        </div>
+      `;
+      wrap.appendChild(card);
+    });
+
+    wrap.querySelectorAll('input[data-field]').forEach(inp => {
+      inp.addEventListener('input', e => {
+        const i = parseInt(e.target.dataset.i);
+        const f = e.target.dataset.field;
+        state.points[i][f] = e.target.value;
+        saveState();
+        renderAll();
+      });
+    });
+    wrap.querySelectorAll('[data-del]').forEach(btn => {
+      btn.addEventListener('click', e => {
+        const i = parseInt(e.currentTarget.dataset.del);
+        state.points.splice(i, 1);
+        saveState();
+        renderAll();
+      });
+    });
+  }
+
+  function renderBanner(){
+    let anyFail = false, maxErrRounded = 0, maxErrAbs = -Infinity, evaluated = 0;
+    const tol = parseFloat($('#tolerance').value);
+    state.points.forEach(p => {
+      const c = computePoint(p);
+      if(!isFinite(c.errRounded)) return;
+      evaluated++;
+      if(c.judge === 'fail') anyFail = true;
+      const abs = Math.abs(c.errRounded);
+      if(abs > maxErrAbs){ maxErrAbs = abs; maxErrRounded = c.errRounded; }
+    });
+
+    const banner = $('#judgeBanner');
+    const bVal = $('#judgeValue');
+    const bDet = $('#judgeDetail');
+    banner.classList.remove('pass','fail','none');
+    if(evaluated === 0){
+      banner.classList.add('none');
+      bVal.textContent = '—';
+      bDet.textContent = '測定値を入力してください';
+    } else {
+      const s = maxErrRounded > 0 ? '+' : (maxErrRounded < 0 ? '' : '');
+      const detail = `最大誤差: ${s}${maxErrRounded.toFixed(2)} %FS (許容 ±${tol} %FS) · ${evaluated}/${state.points.length}`;
+      if(anyFail){
+        banner.classList.add('fail');
+        bVal.textContent = '否';
+      } else {
+        banner.classList.add('pass');
+        bVal.textContent = '良';
+      }
+      bDet.textContent = detail;
+    }
+  }
+
+  function renderAll(){
+    syncUnitLabels();
+    renderTable();
+    renderCards();
+    renderBanner();
+  }
+
+  // ===== LocalStorage で作業内容を保存 =====
+  const STORAGE_KEY = 'calibRecord.v1';
+
+  function saveState(){
+    try {
+      const data = {
+        inMin: $('#inMin').value,
+        inMax: $('#inMax').value,
+        inUnit: $('#inUnit').value,
+        outMin: $('#outMin').value,
+        outMax: $('#outMax').value,
+        outUnit: $('#outUnit').value,
+        tolerance: $('#tolerance').value,
+        note: $('#note').value,
+        points: state.points,
+      };
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+    } catch(e) { /* ignore quota errors */ }
+  }
+
+  function loadState(){
+    try {
+      const raw = localStorage.getItem(STORAGE_KEY);
+      if(!raw) return false;
+      const data = JSON.parse(raw);
+      $('#inMin').value = data.inMin ?? 4;
+      $('#inMax').value = data.inMax ?? 20;
+      $('#inUnit').value = data.inUnit ?? 'mA';
+      $('#outMin').value = data.outMin ?? 4;
+      $('#outMax').value = data.outMax ?? 20;
+      $('#outUnit').value = data.outUnit ?? 'mA';
+      $('#tolerance').value = data.tolerance ?? 0.10;
+      $('#note').value = data.note ?? '';
+      state.points = Array.isArray(data.points) && data.points.length > 0 ? data.points : null;
+      return state.points !== null;
+    } catch(e) { return false; }
+  }
+
+  function fillPoints(percents){
+    state.points = percents.map(p => ({ pct: p, meas: '', adj: '' }));
+    saveState();
+    renderAll();
+  }
+
+  $('#btnStd3').addEventListener('click', () => fillPoints([0, 50, 100]));
+  $('#btnStd5').addEventListener('click', () => fillPoints([0, 25, 50, 75, 100]));
+  $('#btnStd11').addEventListener('click', () => fillPoints([0,10,20,30,40,50,60,70,80,90,100]));
+
+  $('#btnAddRow').addEventListener('click', () => {
+    state.points.push({ pct: '', meas: '', adj: '' });
+    saveState();
+    renderAll();
+  });
+
+  $('#btnClear').addEventListener('click', () => {
+    state.points.forEach(p => { p.meas = ''; p.adj = ''; });
+    saveState();
+    renderAll();
+  });
+
+  $('#btnReset').addEventListener('click', () => {
+    if(!confirm('すべての入力をリセットしますか？')) return;
+    localStorage.removeItem(STORAGE_KEY);
+    $('#note').value = '';
+    $('#inMin').value = 4;
+    $('#inMax').value = 20;
+    $('#inUnit').value = 'mA';
+    $('#outMin').value = 4;
+    $('#outMax').value = 20;
+    $('#outUnit').value = 'mA';
+    $('#tolerance').value = 0.10;
+    fillPoints([0, 50, 100]);
+  });
+
+  $('#btnCalc').addEventListener('click', renderAll);
+  $('#btnPrint').addEventListener('click', () => window.print());
+
+  ['#inMin','#inMax','#outMin','#outMax','#inUnit','#outUnit','#tolerance','#note'].forEach(sel => {
+    $(sel).addEventListener('input', () => { saveState(); renderAll(); });
+    $(sel).addEventListener('change', () => { saveState(); renderAll(); });
+  });
+
+  $$('.preset').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const parts = btn.dataset.preset.split('|');
+      parts.forEach(p => {
+        const [side, vals] = p.split(':');
+        const [lo, hi, u] = vals.split(',');
+        if(side === 'in'){
+          $('#inMin').value = lo; $('#inMax').value = hi; $('#inUnit').value = u;
+        } else if(side === 'out'){
+          $('#outMin').value = lo; $('#outMax').value = hi; $('#outUnit').value = u;
+        }
+      });
+      saveState();
+      renderAll();
+    });
+  });
+
+  // ===== Init =====
+  const restored = loadState();
+  if(!restored){
+    state.points = [
+      { pct: 0, meas: '', adj: '' },
+      { pct: 50, meas: '', adj: '' },
+      { pct: 100, meas: '', adj: '' },
+    ];
+  }
+  renderAll();
+
+  // =========================================================
+  // PWA Service Worker 登録
+  // =========================================================
+  if('serviceWorker' in navigator){
+    window.addEventListener('load', () => {
+      navigator.serviceWorker.register('sw.js')
+        .then(reg => console.log('[PWA] SW registered:', reg.scope))
+        .catch(err => console.warn('[PWA] SW registration failed:', err));
+    });
+  }
+
+  // =========================================================
+  // インストール案内バナー (Android / Chrome)
+  // =========================================================
+  let deferredPrompt = null;
+  const banner = $('#installBanner');
+
+  window.addEventListener('beforeinstallprompt', e => {
+    e.preventDefault();
+    deferredPrompt = e;
+    // 「後で」を選んだセッション中は出さない
+    if(sessionStorage.getItem('installDismissed') !== '1'){
+      banner.classList.add('show');
+    }
+  });
+
+  $('#ibInstall').addEventListener('click', async () => {
+    banner.classList.remove('show');
+    if(!deferredPrompt) return;
+    deferredPrompt.prompt();
+    const { outcome } = await deferredPrompt.userChoice;
+    console.log('[PWA] install outcome:', outcome);
+    deferredPrompt = null;
+  });
+
+  $('#ibDismiss').addEventListener('click', () => {
+    banner.classList.remove('show');
+    sessionStorage.setItem('installDismissed', '1');
+  });
+
+  window.addEventListener('appinstalled', () => {
+    console.log('[PWA] installed');
+    banner.classList.remove('show');
+  });
+</script>
+</body>
+</html>
