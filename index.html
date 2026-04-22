@@ -5,12 +5,10 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <title>ループ校正記録</title>
 
-<!-- ===== PWA メタデータ ===== -->
 <link rel="manifest" href="manifest.json">
 <meta name="theme-color" content="#c44810">
 <meta name="description" content="センサー・計装ループの校正誤差を計算する記録ツール">
 
-<!-- iOS Safari 用 (ホーム画面追加時にアプリ風に) -->
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
@@ -18,7 +16,6 @@
 <link rel="apple-touch-icon" href="icon-192.png">
 <link rel="apple-touch-icon" sizes="512x512" href="icon-512.png">
 
-<!-- favicon -->
 <link rel="icon" type="image/png" sizes="192x192" href="icon-192.png">
 <link rel="icon" type="image/png" sizes="512x512" href="icon-512.png">
 
@@ -61,7 +58,6 @@
       radial-gradient(ellipse 1200px 600px at 15% -10%, rgba(196,72,16,0.04), transparent 60%),
       radial-gradient(ellipse 800px 400px at 110% 110%, rgba(45,122,78,0.03), transparent 60%);
     background-attachment: fixed;
-    /* セーフエリア対応(iPhone X以降) */
     padding-top: env(safe-area-inset-top);
     padding-bottom: env(safe-area-inset-bottom);
     padding-left: env(safe-area-inset-left);
@@ -210,7 +206,7 @@
 
   .range-row {
     display: grid;
-    grid-template-columns: 110px 1fr 24px 1fr 130px;
+    grid-template-columns: 110px 1fr 24px 1fr 110px 90px;
     gap: 10px;
     align-items: center;
     margin-bottom: 14px;
@@ -273,8 +269,11 @@
     padding-right: 30px;
   }
 
-  .unit-select { width: 130px; }
-  .unit-select select { text-align: center; text-align-last: center; }
+  .unit-select { width: 110px; }
+  .unit-select select { text-align: center; text-align-last: center; font-size: 14px; }
+
+  .digit-select { width: 90px; }
+  .digit-select select { text-align: center; text-align-last: center; font-size: 13px; }
 
   .preset-row {
     display: flex;
@@ -329,7 +328,7 @@
     white-space: nowrap;
   }
 
-  /* ===== デスクトップ: 表形式 ===== */
+  /* デスクトップ: 表形式 */
   .table-scroll { overflow-x: auto; }
 
   .pt-table {
@@ -433,7 +432,7 @@
     border-color: var(--bad); color: var(--bad); background: #fdf3f1;
   }
 
-  /* ===== モバイル: カード表示 ===== */
+  /* モバイル: カード */
   .mobile-cards { display: none; }
 
   @media (max-width: 768px) {
@@ -452,8 +451,9 @@
       margin-bottom: 2px;
     }
     .range-row .tilde { display: none; }
-    .range-row .unit-select {
-      grid-column: 1 / -1;
+    .range-row .unit-select,
+    .range-row .digit-select {
+      grid-column: auto;
       width: 100%;
     }
 
@@ -674,7 +674,6 @@
     font-size: 10px;
   }
 
-  /* PWAインストール案内バナー */
   .install-banner {
     display: none;
     position: fixed;
@@ -744,7 +743,7 @@
 
   <header>
     <div>
-      <div class="brand-mark"><span class="dot"></span>LOOP CALIBRATION · RECORD · PWA v1.0</div>
+      <div class="brand-mark"><span class="dot"></span>LOOP CALIBRATION · RECORD · PWA v1.0.1</div>
       <h1>
         ループ校正記録
         <span class="sub">Loop Calibration Record</span>
@@ -752,7 +751,7 @@
     </div>
     <div class="meta-block">
       <div><span class="k">FORMULA</span> &nbsp;·&nbsp; <span class="v">Err = (測定値 − 基準出力) / 出力スパン × 100</span></div>
-      <div><span class="k">ROUNDING</span> &nbsp;·&nbsp; <span class="v">小数第2位 切り上げ</span></div>
+      <div><span class="k">ROUNDING</span> &nbsp;·&nbsp; <span class="v">誤差% は小数第2位 切り上げ</span></div>
       <div><span class="k">DATE</span> &nbsp;·&nbsp; <span class="v" id="today"></span></div>
     </div>
   </header>
@@ -816,6 +815,15 @@
             </optgroup>
           </select>
         </div>
+        <div class="digit-select input-wrap" title="入力側の小数点以下の桁数">
+          <select id="inDigits" aria-label="入力側の小数桁数">
+            <option value="0">0 桁</option>
+            <option value="1">1 桁</option>
+            <option value="2" selected>2 桁</option>
+            <option value="3">3 桁</option>
+            <option value="4">4 桁</option>
+          </select>
+        </div>
       </div>
 
       <div class="range-row">
@@ -870,15 +878,24 @@
             </optgroup>
           </select>
         </div>
+        <div class="digit-select input-wrap" title="出力側の小数点以下の桁数">
+          <select id="outDigits" aria-label="出力側の小数桁数">
+            <option value="0">0 桁</option>
+            <option value="1">1 桁</option>
+            <option value="2" selected>2 桁</option>
+            <option value="3">3 桁</option>
+            <option value="4">4 桁</option>
+          </select>
+        </div>
       </div>
 
       <div class="preset-row">
-        <button class="preset" data-preset="in:0,100,℃|out:4,20,mA">温度 0-100℃ → 4-20mA</button>
-        <button class="preset" data-preset="in:0,10,MPa|out:4,20,mA">圧力 0-10MPa → 4-20mA</button>
-        <button class="preset" data-preset="in:0,100,%|out:4,20,mA">レベル 0-100% → 4-20mA</button>
-        <button class="preset" data-preset="in:4,20,mA|out:4,20,mA">電流 4-20mA → 4-20mA</button>
-        <button class="preset" data-preset="in:4,20,mA|out:1,5,V">電流 4-20mA → 電圧 1-5V</button>
-        <button class="preset" data-preset="in:0,10000,count|out:4,20,mA">カウント 0-10000 → 4-20mA</button>
+        <button class="preset" data-preset="in:0,100,℃,1|out:4,20,mA,2">温度 0-100℃ → 4-20mA</button>
+        <button class="preset" data-preset="in:0,10,MPa,3|out:4,20,mA,2">圧力 0-10MPa → 4-20mA</button>
+        <button class="preset" data-preset="in:0,100,%,1|out:4,20,mA,2">レベル 0-100% → 4-20mA</button>
+        <button class="preset" data-preset="in:4,20,mA,2|out:4,20,mA,2">電流 4-20mA → 4-20mA</button>
+        <button class="preset" data-preset="in:4,20,mA,2|out:1,5,V,3">電流 4-20mA → 電圧 1-5V</button>
+        <button class="preset" data-preset="in:0,10000,count,0|out:4,20,mA,2">カウント 0-10000 → 4-20mA</button>
       </div>
 
       <div class="tol-row">
@@ -949,13 +966,12 @@
   </section>
 
   <footer>
-    <div>&copy; LOOP CALIBRATION RECORD / PWA · OFFLINE READY</div>
+    <div>&copy; LOOP CALIBRATION RECORD / PWA v1.0.1 · OFFLINE READY</div>
     <div class="formula">誤差(%) = (測定値 − 基準出力) ÷ 出力スパン × 100 · 小数第2位切り上げ</div>
   </footer>
 
 </div>
 
-<!-- PWAインストール案内 -->
 <div class="install-banner" id="installBanner">
   <div class="ib-title">APP INSTALL · アプリとしてインストール</div>
   <div>ホーム画面に追加すると、アプリのように起動できます。</div>
@@ -986,6 +1002,55 @@
   function unitLabel(code){ return UNIT_DISPLAY[code] || code; }
 
   let state = { points: [] };
+
+  // ==== 桁数制御ユーティリティ ====
+  function getInDigits(){
+    const d = parseInt($('#inDigits').value);
+    return isFinite(d) ? d : 2;
+  }
+  function getOutDigits(){
+    const d = parseInt($('#outDigits').value);
+    return isFinite(d) ? d : 2;
+  }
+
+  // 指定桁で切り捨て(入力値の表示用・通常の四捨五入)
+  function roundToDigits(n, digits){
+    if(!isFinite(n)) return NaN;
+    const m = Math.pow(10, digits);
+    return Math.round(n * m) / m;
+  }
+
+  // 文字列として、小数点以下の桁数を制限
+  // 入力中の値(例: "12." "12.0")は受け入れつつ、超過桁は切り捨てる
+  function limitDecimalString(str, digits){
+    if(str == null) return '';
+    str = String(str);
+    // 全角の点や記号は半角化
+    str = str.replace(/。/g, '.').replace(/，/g, ',');
+    // 符号+数字+小数点のみ残す
+    // 先頭の-以外のマイナス記号は削除
+    const match = str.match(/^(-?)(\d*)(\.?)(\d*)/);
+    if(!match) return '';
+    const sign = match[1] || '';
+    const intPart = match[2] || '';
+    const dot = match[3] || '';
+    let frac = match[4] || '';
+    if(digits === 0){
+      // 整数のみ許容
+      return sign + intPart;
+    }
+    if(frac.length > digits){
+      frac = frac.substring(0, digits);
+    }
+    return sign + intPart + (dot ? '.' : '') + frac;
+  }
+
+  // 数値を表示用にフォーマット(固定桁数・絶対値の余分な末尾ゼロも表示)
+  function fmtValue(n, digits){
+    if(!isFinite(n)) return '';
+    const rounded = roundToDigits(n, digits);
+    return rounded.toFixed(digits);
+  }
 
   function ceilAbs2(n){
     if(!isFinite(n)) return NaN;
@@ -1029,6 +1094,7 @@
     const pct = parseFloat(p.pct);
     const meas = parseFloat(p.meas);
     const tol = parseFloat($('#tolerance').value);
+    const outDig = getOutDigits();
 
     let refIn = null, refOut = null, delta = null, errRaw = null, errRounded = null, judge = 'none';
 
@@ -1039,6 +1105,7 @@
       refOut = outMin + outSpan * pct / 100;
     }
     if(isFinite(refOut) && isFinite(meas) && isFinite(outSpan) && outSpan !== 0){
+      // 誤差計算時は実際の測定値と基準出力の差分を使用(表示桁に丸める前の値)
       delta = meas - refOut;
       errRaw = (delta / outSpan) * 100;
       errRounded = ceilAbs2(errRaw);
@@ -1049,9 +1116,12 @@
     return { refIn, refOut, delta, errRaw, errRounded, judge };
   }
 
+  // ========= デスクトップ表 =========
   function renderTable(){
     const body = $('#ptBody');
     body.innerHTML = '';
+    const inDig = getInDigits();
+    const outDig = getOutDigits();
     state.points.forEach((p, i) => {
       const c = computePoint(p);
       const tr = document.createElement('tr');
@@ -1059,10 +1129,10 @@
       tr.innerHTML = `
         <td class="idx">${i + 1}</td>
         <td><input type="number" class="tbl-input" data-field="pct" data-i="${i}" step="any" inputmode="decimal" value="${p.pct ?? ''}"></td>
-        <td><input type="number" class="tbl-input readonly" readonly value="${isFinite(c.refIn) ? Number(c.refIn.toFixed(6)) : ''}"></td>
-        <td><input type="number" class="tbl-input readonly" readonly value="${isFinite(c.refOut) ? Number(c.refOut.toFixed(6)) : ''}"></td>
-        <td><input type="number" class="tbl-input" data-field="meas" data-i="${i}" step="any" inputmode="decimal" placeholder="測定値" value="${p.meas ?? ''}"></td>
-        <td><input type="number" class="tbl-input" data-field="adj" data-i="${i}" step="any" inputmode="decimal" placeholder="調整値" value="${p.adj ?? ''}"></td>
+        <td><input type="number" class="tbl-input readonly" readonly value="${fmtValue(c.refIn, inDig)}"></td>
+        <td><input type="number" class="tbl-input readonly" readonly value="${fmtValue(c.refOut, outDig)}"></td>
+        <td><input type="number" class="tbl-input" data-field="meas" data-i="${i}" data-digits="${outDig}" step="any" inputmode="decimal" placeholder="測定値" value="${p.meas ?? ''}"></td>
+        <td><input type="number" class="tbl-input" data-field="adj" data-i="${i}" data-digits="${outDig}" step="any" inputmode="decimal" placeholder="調整値" value="${p.adj ?? ''}"></td>
         <td class="result"><span class="${errCls}">${fmtErrStr(c.errRaw)}</span></td>
         <td class="judge-cell ${c.judge}">${c.judge === 'pass' ? '良' : (c.judge === 'fail' ? '否' : '—')}</td>
         <td class="del-cell"><button class="del-btn" data-del="${i}" title="削除">×</button></td>
@@ -1071,13 +1141,8 @@
     });
 
     body.querySelectorAll('input[data-field]').forEach(inp => {
-      inp.addEventListener('input', e => {
-        const i = parseInt(e.target.dataset.i);
-        const f = e.target.dataset.field;
-        state.points[i][f] = e.target.value;
-        saveState();
-        renderAll();
-      });
+      inp.addEventListener('input', onFieldInput);
+      inp.addEventListener('blur', onFieldBlur);
     });
     body.querySelectorAll('[data-del]').forEach(btn => {
       btn.addEventListener('click', e => {
@@ -1089,9 +1154,12 @@
     });
   }
 
+  // ========= モバイルカード =========
   function renderCards(){
     const unitIn = unitLabel($('#inUnit').value || '-');
     const unitOut = unitLabel($('#outUnit').value || '-');
+    const inDig = getInDigits();
+    const outDig = getOutDigits();
     const wrap = $('#mobileCards');
     wrap.innerHTML = '';
     state.points.forEach((p, i) => {
@@ -1111,19 +1179,19 @@
           </div>
           <div class="card-field">
             <label>基準入力 <span class="m-unit-in">${unitIn}</span></label>
-            <input type="number" class="m-input readonly" readonly value="${isFinite(c.refIn) ? Number(c.refIn.toFixed(6)) : ''}">
+            <input type="number" class="m-input readonly" readonly value="${fmtValue(c.refIn, inDig)}">
           </div>
           <div class="card-field">
             <label>基準出力 <span class="m-unit-out">${unitOut}</span></label>
-            <input type="number" class="m-input readonly" readonly value="${isFinite(c.refOut) ? Number(c.refOut.toFixed(6)) : ''}">
+            <input type="number" class="m-input readonly" readonly value="${fmtValue(c.refOut, outDig)}">
           </div>
           <div class="card-field">
             <label>測定値 <span class="m-unit-out">${unitOut}</span></label>
-            <input type="number" class="m-input" data-field="meas" data-i="${i}" step="any" inputmode="decimal" placeholder="入力してください" value="${p.meas ?? ''}">
+            <input type="number" class="m-input" data-field="meas" data-i="${i}" data-digits="${outDig}" step="any" inputmode="decimal" placeholder="入力してください" value="${p.meas ?? ''}">
           </div>
           <div class="card-field">
             <label>調整値 <span class="m-unit-out">${unitOut}</span></label>
-            <input type="number" class="m-input" data-field="adj" data-i="${i}" step="any" inputmode="decimal" placeholder="任意" value="${p.adj ?? ''}">
+            <input type="number" class="m-input" data-field="adj" data-i="${i}" data-digits="${outDig}" step="any" inputmode="decimal" placeholder="任意" value="${p.adj ?? ''}">
           </div>
           <div class="card-field">
             <label>誤差 (%)</label>
@@ -1139,13 +1207,8 @@
     });
 
     wrap.querySelectorAll('input[data-field]').forEach(inp => {
-      inp.addEventListener('input', e => {
-        const i = parseInt(e.target.dataset.i);
-        const f = e.target.dataset.field;
-        state.points[i][f] = e.target.value;
-        saveState();
-        renderAll();
-      });
+      inp.addEventListener('input', onFieldInput);
+      inp.addEventListener('blur', onFieldBlur);
     });
     wrap.querySelectorAll('[data-del]').forEach(btn => {
       btn.addEventListener('click', e => {
@@ -1155,6 +1218,102 @@
         renderAll();
       });
     });
+  }
+
+  // 入力中: 桁数制限を適用(data-digits 属性のある入力のみ)
+  function onFieldInput(e){
+    const inp = e.target;
+    const i = parseInt(inp.dataset.i);
+    const f = inp.dataset.field;
+    const dig = inp.dataset.digits !== undefined ? parseInt(inp.dataset.digits) : null;
+
+    if(dig !== null && isFinite(dig)){
+      // 桁数制限をリアルタイム適用
+      const raw = inp.value;
+      const limited = limitDecimalString(raw, dig);
+      if(raw !== limited){
+        // カーソル位置を保持するため、値だけ書き換える
+        const pos = inp.selectionStart;
+        inp.value = limited;
+        try { inp.setSelectionRange(pos - (raw.length - limited.length), pos - (raw.length - limited.length)); } catch(err) {}
+      }
+    }
+    state.points[i][f] = inp.value;
+    saveState();
+    // 再描画は入力中は計算結果と判定のみ更新(入力欄の再生成を避けてフォーカスを保持)
+    updateLiveResults();
+  }
+
+  // フォーカス喪失時: 最終確定(末尾のゴミや孤立した小数点を整える)
+  function onFieldBlur(e){
+    const inp = e.target;
+    const dig = inp.dataset.digits !== undefined ? parseInt(inp.dataset.digits) : null;
+    if(dig !== null && isFinite(dig)){
+      const v = parseFloat(inp.value);
+      if(isFinite(v)){
+        // 末尾のドットなどを整え、指定桁で表示
+        const fixed = v.toFixed(dig);
+        inp.value = fixed;
+        const i = parseInt(inp.dataset.i);
+        const f = inp.dataset.field;
+        state.points[i][f] = fixed;
+        saveState();
+        renderAll();
+      }
+    }
+  }
+
+  // 入力中のライブ更新(入力欄のvalueを触らない)
+  function updateLiveResults(){
+    const inDig = getInDigits();
+    const outDig = getOutDigits();
+    // 表
+    $$('#ptBody tr').forEach((tr, i) => {
+      const p = state.points[i];
+      if(!p) return;
+      const c = computePoint(p);
+      const cells = tr.querySelectorAll('td');
+      const errCls = c.errRounded > 0 ? 'val-pos' : (c.errRounded < 0 ? 'val-neg' : 'val-zero');
+      // refIn, refOut
+      const refInInput = tr.querySelector('input[data-field="refin"]') || tr.querySelectorAll('input.readonly')[0];
+      const refOutInput = tr.querySelectorAll('input.readonly')[1];
+      if(refInInput) refInInput.value = fmtValue(c.refIn, inDig);
+      if(refOutInput) refOutInput.value = fmtValue(c.refOut, outDig);
+      // err cell (7番目)
+      const errCell = tr.querySelectorAll('td.result')[0];
+      if(errCell) errCell.innerHTML = `<span class="${errCls}">${fmtErrStr(c.errRaw)}</span>`;
+      // judge cell
+      const jCell = tr.querySelector('td.judge-cell');
+      if(jCell){
+        jCell.classList.remove('pass','fail','none');
+        jCell.classList.add(c.judge);
+        jCell.textContent = c.judge === 'pass' ? '良' : (c.judge === 'fail' ? '否' : '—');
+      }
+    });
+    // カード
+    $$('#mobileCards .card').forEach((card, i) => {
+      const p = state.points[i];
+      if(!p) return;
+      const c = computePoint(p);
+      const errCls = c.errRounded > 0 ? 'val-pos' : (c.errRounded < 0 ? 'val-neg' : 'val-zero');
+      const readonlyInputs = card.querySelectorAll('input.readonly');
+      if(readonlyInputs[0]) readonlyInputs[0].value = fmtValue(c.refIn, inDig);
+      if(readonlyInputs[1]) readonlyInputs[1].value = fmtValue(c.refOut, outDig);
+      const resEl = card.querySelector('.m-result');
+      if(resEl) resEl.innerHTML = `<span class="${errCls}">${fmtErrStr(c.errRaw)}</span>`;
+      const jEl = card.querySelector('.m-judge');
+      if(jEl){
+        jEl.classList.remove('pass','fail','none');
+        jEl.classList.add(c.judge);
+        jEl.textContent = c.judge === 'pass' ? '良' : (c.judge === 'fail' ? '否' : '—');
+      }
+      // title pct 更新
+      const titleEl = card.querySelector('.card-title');
+      if(titleEl){
+        titleEl.innerHTML = `<span class="num">${i + 1}</span>校正点 ${p.pct ?? '—'}%`;
+      }
+    });
+    renderBanner();
   }
 
   function renderBanner(){
@@ -1198,7 +1357,6 @@
     renderBanner();
   }
 
-  // ===== LocalStorage で作業内容を保存 =====
   const STORAGE_KEY = 'calibRecord.v1';
 
   function saveState(){
@@ -1207,15 +1365,17 @@
         inMin: $('#inMin').value,
         inMax: $('#inMax').value,
         inUnit: $('#inUnit').value,
+        inDigits: $('#inDigits').value,
         outMin: $('#outMin').value,
         outMax: $('#outMax').value,
         outUnit: $('#outUnit').value,
+        outDigits: $('#outDigits').value,
         tolerance: $('#tolerance').value,
         note: $('#note').value,
         points: state.points,
       };
       localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
-    } catch(e) { /* ignore quota errors */ }
+    } catch(e) { /* ignore */ }
   }
 
   function loadState(){
@@ -1226,9 +1386,11 @@
       $('#inMin').value = data.inMin ?? 4;
       $('#inMax').value = data.inMax ?? 20;
       $('#inUnit').value = data.inUnit ?? 'mA';
+      $('#inDigits').value = data.inDigits ?? '2';
       $('#outMin').value = data.outMin ?? 4;
       $('#outMax').value = data.outMax ?? 20;
       $('#outUnit').value = data.outUnit ?? 'mA';
+      $('#outDigits').value = data.outDigits ?? '2';
       $('#tolerance').value = data.tolerance ?? 0.10;
       $('#note').value = data.note ?? '';
       state.points = Array.isArray(data.points) && data.points.length > 0 ? data.points : null;
@@ -1265,9 +1427,11 @@
     $('#inMin').value = 4;
     $('#inMax').value = 20;
     $('#inUnit').value = 'mA';
+    $('#inDigits').value = '2';
     $('#outMin').value = 4;
     $('#outMax').value = 20;
     $('#outUnit').value = 'mA';
+    $('#outDigits').value = '2';
     $('#tolerance').value = 0.10;
     fillPoints([0, 50, 100]);
   });
@@ -1275,21 +1439,25 @@
   $('#btnCalc').addEventListener('click', renderAll);
   $('#btnPrint').addEventListener('click', () => window.print());
 
-  ['#inMin','#inMax','#outMin','#outMax','#inUnit','#outUnit','#tolerance','#note'].forEach(sel => {
+  ['#inMin','#inMax','#outMin','#outMax','#inUnit','#outUnit','#inDigits','#outDigits','#tolerance','#note'].forEach(sel => {
     $(sel).addEventListener('input', () => { saveState(); renderAll(); });
     $(sel).addEventListener('change', () => { saveState(); renderAll(); });
   });
 
   $$('.preset').forEach(btn => {
     btn.addEventListener('click', () => {
+      // "in:0,100,℃,1|out:4,20,mA,2" 形式 (最後の数字は小数桁数、省略可)
       const parts = btn.dataset.preset.split('|');
       parts.forEach(p => {
         const [side, vals] = p.split(':');
-        const [lo, hi, u] = vals.split(',');
+        const segs = vals.split(',');
+        const [lo, hi, u, dig] = segs;
         if(side === 'in'){
           $('#inMin').value = lo; $('#inMax').value = hi; $('#inUnit').value = u;
+          if(dig !== undefined) $('#inDigits').value = dig;
         } else if(side === 'out'){
           $('#outMin').value = lo; $('#outMax').value = hi; $('#outUnit').value = u;
+          if(dig !== undefined) $('#outDigits').value = dig;
         }
       });
       saveState();
@@ -1297,7 +1465,7 @@
     });
   });
 
-  // ===== Init =====
+  // Init
   const restored = loadState();
   if(!restored){
     state.points = [
@@ -1308,9 +1476,7 @@
   }
   renderAll();
 
-  // =========================================================
-  // PWA Service Worker 登録
-  // =========================================================
+  // PWA SW
   if('serviceWorker' in navigator){
     window.addEventListener('load', () => {
       navigator.serviceWorker.register('sw.js')
@@ -1319,21 +1485,16 @@
     });
   }
 
-  // =========================================================
-  // インストール案内バナー (Android / Chrome)
-  // =========================================================
+  // インストールバナー
   let deferredPrompt = null;
   const banner = $('#installBanner');
-
   window.addEventListener('beforeinstallprompt', e => {
     e.preventDefault();
     deferredPrompt = e;
-    // 「後で」を選んだセッション中は出さない
     if(sessionStorage.getItem('installDismissed') !== '1'){
       banner.classList.add('show');
     }
   });
-
   $('#ibInstall').addEventListener('click', async () => {
     banner.classList.remove('show');
     if(!deferredPrompt) return;
@@ -1342,14 +1503,11 @@
     console.log('[PWA] install outcome:', outcome);
     deferredPrompt = null;
   });
-
   $('#ibDismiss').addEventListener('click', () => {
     banner.classList.remove('show');
     sessionStorage.setItem('installDismissed', '1');
   });
-
   window.addEventListener('appinstalled', () => {
-    console.log('[PWA] installed');
     banner.classList.remove('show');
   });
 </script>
