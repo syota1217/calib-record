@@ -3,7 +3,7 @@
  * キャッシュファースト戦略で完全オフライン動作を実現
  * ================================================================= */
 
-const CACHE_NAME = 'calib-record-v1.0.0';
+const CACHE_NAME = 'calib-record-v1.0.3';
 
 // キャッシュするファイルのリスト
 const ASSETS_TO_CACHE = [

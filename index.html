@@ -410,6 +410,14 @@
   .pt-table td.judge-cell.fail { color: var(--bad); background: #fbecea; }
   .pt-table td.judge-cell.none { color: var(--ink-muted); }
 
+  /* 調整列を非表示にする(調整不要時) */
+  .pt-table.hide-adjust th.col-adj,
+  .pt-table.hide-adjust td.col-adj,
+  .pt-table.hide-adjust th.col-adj-err,
+  .pt-table.hide-adjust td.col-adj-err,
+  .pt-table.hide-adjust th.col-adj-judge,
+  .pt-table.hide-adjust td.col-adj-judge { display: none; }
+
   .pt-table td.del-cell {
     width: 38px;
     text-align: center;
@@ -573,6 +581,9 @@
   .card-field .m-judge.pass { color: var(--ok); }
   .card-field .m-judge.fail { color: var(--bad); }
   .card-field .m-judge.none { color: var(--ink-muted); }
+
+  /* 調整セクションを非表示にする(調整不要時) */
+  .card.hide-adjust .card-field-adj { display: none; }
 
   .btn-row {
     display: flex;
@@ -743,7 +754,7 @@
 
   <header>
     <div>
-      <div class="brand-mark"><span class="dot"></span>LOOP CALIBRATION · RECORD · PWA v1.0.1</div>
+      <div class="brand-mark"><span class="dot"></span>LOOP CALIBRATION · RECORD · PWA v1.0.3</div>
       <h1>
         ループ校正記録
         <span class="sub">Loop Calibration Record</span>
@@ -931,9 +942,11 @@
               <th>基準入力 <span id="thInUnit" style="color:var(--ink-muted)">[mA]</span></th>
               <th>基準出力 <span id="thOutUnit" style="color:var(--ink-muted)">[mA]</span></th>
               <th>測定値 <span id="thOutUnit2" style="color:var(--ink-muted)">[mA]</span></th>
-              <th>調整値 <span id="thOutUnit3" style="color:var(--ink-muted)">[mA]</span></th>
               <th>誤差 (%)</th>
               <th>判定</th>
+              <th class="col-adj">調整値 <span id="thOutUnit3" style="color:var(--ink-muted)">[mA]</span></th>
+              <th class="col-adj-err">調整誤差 (%)</th>
+              <th class="col-adj-judge">調整判定</th>
               <th></th>
             </tr>
           </thead>
@@ -966,7 +979,7 @@
   </section>
 
   <footer>
-    <div>&copy; LOOP CALIBRATION RECORD / PWA v1.0.1 · OFFLINE READY</div>
+    <div>&copy; LOOP CALIBRATION RECORD / PWA v1.0.3 · OFFLINE READY</div>
     <div class="formula">誤差(%) = (測定値 − 基準出力) ÷ 出力スパン × 100 · 小数第2位切り上げ</div>
   </footer>
 
@@ -1093,10 +1106,13 @@
     const outSpan = outMax - outMin;
     const pct = parseFloat(p.pct);
     const meas = parseFloat(p.meas);
+    const adj = parseFloat(p.adj);
     const tol = parseFloat($('#tolerance').value);
     const outDig = getOutDigits();
 
-    let refIn = null, refOut = null, delta = null, errRaw = null, errRounded = null, judge = 'none';
+    let refIn = null, refOut = null;
+    let delta = null, errRaw = null, errRounded = null, judge = 'none';
+    let deltaAdj = null, errAdjRaw = null, errAdjRounded = null, judgeAdj = 'none';
 
     if(isFinite(pct) && isFinite(inMin) && isFinite(inMax)){
       refIn = inMin + inSpan * pct / 100;
@@ -1104,8 +1120,8 @@
     if(isFinite(pct) && isFinite(outMin) && isFinite(outMax)){
       refOut = outMin + outSpan * pct / 100;
     }
+    // 測定値の判定
     if(isFinite(refOut) && isFinite(meas) && isFinite(outSpan) && outSpan !== 0){
-      // 誤差計算時は実際の測定値と基準出力の差分を使用(表示桁に丸める前の値)
       delta = meas - refOut;
       errRaw = (delta / outSpan) * 100;
       errRounded = ceilAbs2(errRaw);
@@ -1113,7 +1129,29 @@
         judge = Math.abs(errRounded) <= tol ? 'pass' : 'fail';
       }
     }
-    return { refIn, refOut, delta, errRaw, errRounded, judge };
+    // 調整値の判定
+    if(isFinite(refOut) && isFinite(adj) && isFinite(outSpan) && outSpan !== 0){
+      deltaAdj = adj - refOut;
+      errAdjRaw = (deltaAdj / outSpan) * 100;
+      errAdjRounded = ceilAbs2(errAdjRaw);
+      if(isFinite(tol) && tol > 0){
+        judgeAdj = Math.abs(errAdjRounded) <= tol ? 'pass' : 'fail';
+      }
+    }
+    return {
+      refIn, refOut,
+      delta, errRaw, errRounded, judge,
+      deltaAdj, errAdjRaw, errAdjRounded, judgeAdj
+    };
+  }
+
+  // 調整値欄を表示すべきか判定
+  // 測定値で1つでも「否」があれば true (全行に調整値欄を出す)
+  function shouldShowAdjust(){
+    return state.points.some(p => {
+      const c = computePoint(p);
+      return c.judge === 'fail';
+    });
   }
 
   // ========= デスクトップ表 =========
@@ -1122,19 +1160,27 @@
     body.innerHTML = '';
     const inDig = getInDigits();
     const outDig = getOutDigits();
+    const showAdj = shouldShowAdjust();
+    const table = $('#ptTable');
+    if(showAdj) table.classList.remove('hide-adjust');
+    else table.classList.add('hide-adjust');
+
     state.points.forEach((p, i) => {
       const c = computePoint(p);
       const tr = document.createElement('tr');
       const errCls = c.errRounded > 0 ? 'val-pos' : (c.errRounded < 0 ? 'val-neg' : 'val-zero');
+      const errAdjCls = c.errAdjRounded > 0 ? 'val-pos' : (c.errAdjRounded < 0 ? 'val-neg' : 'val-zero');
       tr.innerHTML = `
         <td class="idx">${i + 1}</td>
-        <td><input type="number" class="tbl-input" data-field="pct" data-i="${i}" step="any" inputmode="decimal" value="${p.pct ?? ''}"></td>
+        <td><input type="number" class="tbl-input" data-field="pct" data-i="${i}" step="any" inputmode="decimal" enterkeyhint="next" value="${p.pct ?? ''}"></td>
         <td><input type="number" class="tbl-input readonly" readonly value="${fmtValue(c.refIn, inDig)}"></td>
         <td><input type="number" class="tbl-input readonly" readonly value="${fmtValue(c.refOut, outDig)}"></td>
-        <td><input type="number" class="tbl-input" data-field="meas" data-i="${i}" data-digits="${outDig}" step="any" inputmode="decimal" placeholder="測定値" value="${p.meas ?? ''}"></td>
-        <td><input type="number" class="tbl-input" data-field="adj" data-i="${i}" data-digits="${outDig}" step="any" inputmode="decimal" placeholder="調整値" value="${p.adj ?? ''}"></td>
+        <td><input type="number" class="tbl-input" data-field="meas" data-i="${i}" data-digits="${outDig}" step="any" inputmode="decimal" enterkeyhint="next" placeholder="測定値" value="${p.meas ?? ''}"></td>
         <td class="result"><span class="${errCls}">${fmtErrStr(c.errRaw)}</span></td>
         <td class="judge-cell ${c.judge}">${c.judge === 'pass' ? '良' : (c.judge === 'fail' ? '否' : '—')}</td>
+        <td class="col-adj"><input type="number" class="tbl-input" data-field="adj" data-i="${i}" data-digits="${outDig}" step="any" inputmode="decimal" enterkeyhint="next" placeholder="調整値" value="${p.adj ?? ''}"></td>
+        <td class="result col-adj-err"><span class="${errAdjCls}">${fmtErrStr(c.errAdjRaw)}</span></td>
+        <td class="judge-cell col-adj-judge ${c.judgeAdj}">${c.judgeAdj === 'pass' ? '良' : (c.judgeAdj === 'fail' ? '否' : '—')}</td>
         <td class="del-cell"><button class="del-btn" data-del="${i}" title="削除">×</button></td>
       `;
       body.appendChild(tr);
@@ -1143,6 +1189,7 @@
     body.querySelectorAll('input[data-field]').forEach(inp => {
       inp.addEventListener('input', onFieldInput);
       inp.addEventListener('blur', onFieldBlur);
+      inp.addEventListener('keydown', onFieldKeydown);
     });
     body.querySelectorAll('[data-del]').forEach(btn => {
       btn.addEventListener('click', e => {
@@ -1160,13 +1207,15 @@
     const unitOut = unitLabel($('#outUnit').value || '-');
     const inDig = getInDigits();
     const outDig = getOutDigits();
+    const showAdj = shouldShowAdjust();
     const wrap = $('#mobileCards');
     wrap.innerHTML = '';
     state.points.forEach((p, i) => {
       const c = computePoint(p);
       const errCls = c.errRounded > 0 ? 'val-pos' : (c.errRounded < 0 ? 'val-neg' : 'val-zero');
+      const errAdjCls = c.errAdjRounded > 0 ? 'val-pos' : (c.errAdjRounded < 0 ? 'val-neg' : 'val-zero');
       const card = document.createElement('div');
-      card.className = 'card';
+      card.className = 'card' + (showAdj ? '' : ' hide-adjust');
       card.innerHTML = `
         <div class="card-head">
           <div class="card-title"><span class="num">${i + 1}</span>校正点 ${p.pct ?? '—'}%</div>
@@ -1175,7 +1224,7 @@
         <div class="card-body">
           <div class="card-field">
             <label>入力 (%)</label>
-            <input type="number" class="m-input" data-field="pct" data-i="${i}" step="any" inputmode="decimal" value="${p.pct ?? ''}">
+            <input type="number" class="m-input" data-field="pct" data-i="${i}" step="any" inputmode="decimal" enterkeyhint="next" value="${p.pct ?? ''}">
           </div>
           <div class="card-field">
             <label>基準入力 <span class="m-unit-in">${unitIn}</span></label>
@@ -1187,11 +1236,7 @@
           </div>
           <div class="card-field">
             <label>測定値 <span class="m-unit-out">${unitOut}</span></label>
-            <input type="number" class="m-input" data-field="meas" data-i="${i}" data-digits="${outDig}" step="any" inputmode="decimal" placeholder="入力してください" value="${p.meas ?? ''}">
-          </div>
-          <div class="card-field">
-            <label>調整値 <span class="m-unit-out">${unitOut}</span></label>
-            <input type="number" class="m-input" data-field="adj" data-i="${i}" data-digits="${outDig}" step="any" inputmode="decimal" placeholder="任意" value="${p.adj ?? ''}">
+            <input type="number" class="m-input" data-field="meas" data-i="${i}" data-digits="${outDig}" step="any" inputmode="decimal" enterkeyhint="next" placeholder="入力してください" value="${p.meas ?? ''}">
           </div>
           <div class="card-field">
             <label>誤差 (%)</label>
@@ -1201,6 +1246,18 @@
             <label>判定</label>
             <div class="m-judge ${c.judge}">${c.judge === 'pass' ? '良' : (c.judge === 'fail' ? '否' : '—')}</div>
           </div>
+          <div class="card-field card-field-adj">
+            <label>調整値 <span class="m-unit-out">${unitOut}</span></label>
+            <input type="number" class="m-input" data-field="adj" data-i="${i}" data-digits="${outDig}" step="any" inputmode="decimal" enterkeyhint="next" placeholder="調整値を入力" value="${p.adj ?? ''}">
+          </div>
+          <div class="card-field card-field-adj">
+            <label>調整誤差 (%)</label>
+            <div class="m-result m-adj-err"><span class="${errAdjCls}">${fmtErrStr(c.errAdjRaw)}</span></div>
+          </div>
+          <div class="card-field card-field-adj">
+            <label>調整判定</label>
+            <div class="m-judge m-adj-judge ${c.judgeAdj}">${c.judgeAdj === 'pass' ? '良' : (c.judgeAdj === 'fail' ? '否' : '—')}</div>
+          </div>
         </div>
       `;
       wrap.appendChild(card);
@@ -1209,6 +1266,7 @@
     wrap.querySelectorAll('input[data-field]').forEach(inp => {
       inp.addEventListener('input', onFieldInput);
       inp.addEventListener('blur', onFieldBlur);
+      inp.addEventListener('keydown', onFieldKeydown);
     });
     wrap.querySelectorAll('[data-del]').forEach(btn => {
       btn.addEventListener('click', e => {
@@ -1263,51 +1321,129 @@
     }
   }
 
-  // 入力中のライブ更新(入力欄のvalueを触らない)
+  // Enterキー: 次の入力欄(同じフィールドの次の校正点)へフォーカス移動
+  function onFieldKeydown(e){
+    if(e.key !== 'Enter') return;
+    e.preventDefault();
+    const inp = e.target;
+    const i = parseInt(inp.dataset.i);
+    const currentField = inp.dataset.field;
+
+    // 入力中の値を確定(blurと同じ処理)
+    onFieldBlur({ target: inp });
+
+    // 移動先フィールド: pct欄でEnter押下時は同じ行の meas へ、それ以外は同じフィールドの次の行へ
+    let targetField, targetIndex;
+    if(currentField === 'pct'){
+      targetField = 'meas';
+      targetIndex = i;
+    } else {
+      targetField = currentField;
+      targetIndex = i + 1;
+    }
+
+    // 現在画面に表示されているコンテナ(表 or カード)を判定して次の入力欄を探す
+    const isMobile = window.matchMedia('(max-width: 768px)').matches;
+    const container = isMobile ? document.getElementById('mobileCards') : document.getElementById('ptBody');
+    if(!container) return;
+
+    // renderAllにより要素は再生成されているので、新しいDOMで対象を探す
+    setTimeout(() => {
+      const refreshedContainer = isMobile ? document.getElementById('mobileCards') : document.getElementById('ptBody');
+      if(!refreshedContainer) return;
+      const next = refreshedContainer.querySelector(
+        `input[data-field="${targetField}"][data-i="${targetIndex}"]`
+      );
+      if(next){
+        next.focus();
+        // モバイルでは末尾にカーソルを置く
+        try {
+          const len = next.value.length;
+          next.setSelectionRange(len, len);
+        } catch(_) {}
+      } else {
+        // 移動先がない場合(最終行など)は入力欄からフォーカスを外す(キーボードを閉じる)
+        inp.blur();
+      }
+    }, 0);
+  }
+
+
   function updateLiveResults(){
     const inDig = getInDigits();
     const outDig = getOutDigits();
+    const showAdj = shouldShowAdjust();
+
+    // 表の調整列 表示制御
+    const table = $('#ptTable');
+    if(table){
+      if(showAdj) table.classList.remove('hide-adjust');
+      else table.classList.add('hide-adjust');
+    }
+
     // 表
     $$('#ptBody tr').forEach((tr, i) => {
       const p = state.points[i];
       if(!p) return;
       const c = computePoint(p);
-      const cells = tr.querySelectorAll('td');
       const errCls = c.errRounded > 0 ? 'val-pos' : (c.errRounded < 0 ? 'val-neg' : 'val-zero');
+      const errAdjCls = c.errAdjRounded > 0 ? 'val-pos' : (c.errAdjRounded < 0 ? 'val-neg' : 'val-zero');
       // refIn, refOut
-      const refInInput = tr.querySelector('input[data-field="refin"]') || tr.querySelectorAll('input.readonly')[0];
+      const refInInput = tr.querySelectorAll('input.readonly')[0];
       const refOutInput = tr.querySelectorAll('input.readonly')[1];
       if(refInInput) refInInput.value = fmtValue(c.refIn, inDig);
       if(refOutInput) refOutInput.value = fmtValue(c.refOut, outDig);
-      // err cell (7番目)
-      const errCell = tr.querySelectorAll('td.result')[0];
-      if(errCell) errCell.innerHTML = `<span class="${errCls}">${fmtErrStr(c.errRaw)}</span>`;
-      // judge cell
-      const jCell = tr.querySelector('td.judge-cell');
-      if(jCell){
-        jCell.classList.remove('pass','fail','none');
-        jCell.classList.add(c.judge);
-        jCell.textContent = c.judge === 'pass' ? '良' : (c.judge === 'fail' ? '否' : '—');
+      // 測定値の誤差・判定
+      const resultCells = tr.querySelectorAll('td.result');
+      const judgeCells = tr.querySelectorAll('td.judge-cell');
+      if(resultCells[0]) resultCells[0].innerHTML = `<span class="${errCls}">${fmtErrStr(c.errRaw)}</span>`;
+      if(judgeCells[0]){
+        judgeCells[0].classList.remove('pass','fail','none');
+        judgeCells[0].classList.add(c.judge);
+        judgeCells[0].textContent = c.judge === 'pass' ? '良' : (c.judge === 'fail' ? '否' : '—');
+      }
+      // 調整値の誤差・判定
+      if(resultCells[1]) resultCells[1].innerHTML = `<span class="${errAdjCls}">${fmtErrStr(c.errAdjRaw)}</span>`;
+      if(judgeCells[1]){
+        judgeCells[1].classList.remove('pass','fail','none');
+        judgeCells[1].classList.add(c.judgeAdj);
+        judgeCells[1].textContent = c.judgeAdj === 'pass' ? '良' : (c.judgeAdj === 'fail' ? '否' : '—');
       }
     });
+
     // カード
     $$('#mobileCards .card').forEach((card, i) => {
       const p = state.points[i];
       if(!p) return;
       const c = computePoint(p);
       const errCls = c.errRounded > 0 ? 'val-pos' : (c.errRounded < 0 ? 'val-neg' : 'val-zero');
+      const errAdjCls = c.errAdjRounded > 0 ? 'val-pos' : (c.errAdjRounded < 0 ? 'val-neg' : 'val-zero');
+
+      if(showAdj) card.classList.remove('hide-adjust');
+      else card.classList.add('hide-adjust');
+
       const readonlyInputs = card.querySelectorAll('input.readonly');
       if(readonlyInputs[0]) readonlyInputs[0].value = fmtValue(c.refIn, inDig);
       if(readonlyInputs[1]) readonlyInputs[1].value = fmtValue(c.refOut, outDig);
-      const resEl = card.querySelector('.m-result');
-      if(resEl) resEl.innerHTML = `<span class="${errCls}">${fmtErrStr(c.errRaw)}</span>`;
-      const jEl = card.querySelector('.m-judge');
-      if(jEl){
-        jEl.classList.remove('pass','fail','none');
-        jEl.classList.add(c.judge);
-        jEl.textContent = c.judge === 'pass' ? '良' : (c.judge === 'fail' ? '否' : '—');
+
+      // 測定値の誤差・判定 (調整以外)
+      const measResEl = card.querySelector('.card-field .m-result:not(.m-adj-err)');
+      if(measResEl) measResEl.innerHTML = `<span class="${errCls}">${fmtErrStr(c.errRaw)}</span>`;
+      const measJEl = card.querySelector('.card-field .m-judge:not(.m-adj-judge)');
+      if(measJEl){
+        measJEl.classList.remove('pass','fail','none');
+        measJEl.classList.add(c.judge);
+        measJEl.textContent = c.judge === 'pass' ? '良' : (c.judge === 'fail' ? '否' : '—');
       }
-      // title pct 更新
+      // 調整値の誤差・判定
+      const adjResEl = card.querySelector('.m-adj-err');
+      if(adjResEl) adjResEl.innerHTML = `<span class="${errAdjCls}">${fmtErrStr(c.errAdjRaw)}</span>`;
+      const adjJEl = card.querySelector('.m-adj-judge');
+      if(adjJEl){
+        adjJEl.classList.remove('pass','fail','none');
+        adjJEl.classList.add(c.judgeAdj);
+        adjJEl.textContent = c.judgeAdj === 'pass' ? '良' : (c.judgeAdj === 'fail' ? '否' : '—');
+      }
       const titleEl = card.querySelector('.card-title');
       if(titleEl){
         titleEl.innerHTML = `<span class="num">${i + 1}</span>校正点 ${p.pct ?? '—'}%`;
@@ -1317,15 +1453,31 @@
   }
 
   function renderBanner(){
-    let anyFail = false, maxErrRounded = 0, maxErrAbs = -Infinity, evaluated = 0;
     const tol = parseFloat($('#tolerance').value);
+    let anyFail = false;
+    let maxErrRounded = 0;
+    let maxErrAbs = -Infinity;
+    let evaluated = 0;
+    let usedAdjustment = false;
+
     state.points.forEach(p => {
       const c = computePoint(p);
-      if(!isFinite(c.errRounded)) return;
+      // 評価する誤差を決定: 調整値が入力されていればそちらを優先
+      let effErr = null, effJudge = null;
+      if(isFinite(c.errAdjRounded)){
+        effErr = c.errAdjRounded;
+        effJudge = c.judgeAdj;
+        usedAdjustment = true;
+      } else if(isFinite(c.errRounded)){
+        effErr = c.errRounded;
+        effJudge = c.judge;
+      } else {
+        return;
+      }
       evaluated++;
-      if(c.judge === 'fail') anyFail = true;
-      const abs = Math.abs(c.errRounded);
-      if(abs > maxErrAbs){ maxErrAbs = abs; maxErrRounded = c.errRounded; }
+      if(effJudge === 'fail') anyFail = true;
+      const abs = Math.abs(effErr);
+      if(abs > maxErrAbs){ maxErrAbs = abs; maxErrRounded = effErr; }
     });
 
     const banner = $('#judgeBanner');
@@ -1338,7 +1490,8 @@
       bDet.textContent = '測定値を入力してください';
     } else {
       const s = maxErrRounded > 0 ? '+' : (maxErrRounded < 0 ? '' : '');
-      const detail = `最大誤差: ${s}${maxErrRounded.toFixed(2)} %FS (許容 ±${tol} %FS) · ${evaluated}/${state.points.length}`;
+      const basis = usedAdjustment ? '調整後' : '測定値';
+      const detail = `${basis}最大誤差: ${s}${maxErrRounded.toFixed(2)} %FS (許容 ±${tol} %FS) · ${evaluated}/${state.points.length}`;
       if(anyFail){
         banner.classList.add('fail');
         bVal.textContent = '否';
